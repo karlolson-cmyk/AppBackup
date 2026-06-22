@@ -40,17 +40,19 @@ class WebDavRepository {
                 .header("Depth", "0")
                 .build()
             val response = client.newCall(request).execute()
-            if (response.isSuccessful) {
-                Result.success("连接成功")
-            } else {
-                val msg = when (response.code) {
-                    401, 403 -> "账号或密码错误"
-                    404 -> "路径不存在"
-                    405, 501 -> "服务器不支持 WebDAV"
-                    in 500..599 -> "服务器错误 (${response.code})"
-                    else -> "连接失败 (${response.code})"
+            response.use { resp ->
+                if (resp.isSuccessful) {
+                    Result.success("连接成功")
+                } else {
+                    val msg = when (resp.code) {
+                        401, 403 -> "账号或密码错误"
+                        404 -> "路径不存在"
+                        405, 501 -> "服务器不支持 WebDAV"
+                        in 500..599 -> "服务器错误 (${resp.code})"
+                        else -> "连接失败 (${resp.code})"
+                    }
+                    Result.failure(IOException(msg))
                 }
-                Result.failure(IOException(msg))
             }
         } catch (e: UnknownHostException) {
             Result.failure(IOException("无法解析服务器地址"))
@@ -93,6 +95,8 @@ class WebDavRepository {
 
         if (results.all { it.value == "成功" }) {
             Result.success(results)
+        } else if (results.none { it.value == "成功" }) {
+            Result.failure(IOException("所有应用备份均失败"))
         } else {
             Result.success(results)
         }
@@ -133,11 +137,16 @@ class WebDavRepository {
             .header("Authorization", credential)
             .build()
         val response = client.newCall(request).execute()
-        if (!response.isSuccessful && response.code != 405 && response.code != 201 && response.code != 409) {
-            // 405 means already exists as collection (acceptable)
-            // 409 means parent doesn't exist (will be handled by caller)
+        response.use { resp ->
+            if (resp.isSuccessful) return
+            when (resp.code) {
+                405 -> return // already exists as collection
+                409 -> return // parent doesn't exist, will fail at PUT
+                401, 403 -> throw IOException("WebDAV 认证失败，无法创建目录")
+                404 -> throw IOException("WebDAV 父目录不存在")
+                else -> throw IOException("创建目录失败 (${resp.code})")
+            }
         }
-        response.close()
     }
 
     private fun putFile(url: String, data: ByteArray, credential: String) {
@@ -148,10 +157,11 @@ class WebDavRepository {
             .header("Authorization", credential)
             .build()
         val response = client.newCall(request).execute()
-        if (!response.isSuccessful) {
-            throw IOException("上传失败 (${response.code})")
+        response.use { resp ->
+            if (!resp.isSuccessful) {
+                throw IOException("上传失败 (${resp.code})")
+            }
         }
-        response.close()
     }
 
     private fun normalizeUrl(url: String): String {
