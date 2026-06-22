@@ -9,8 +9,11 @@ import com.appbackup.data.repository.AppRepository
 import com.appbackup.data.repository.WebDavRepository
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 sealed class BackupState {
@@ -30,6 +33,19 @@ class AppListViewModel(application: Application) : AndroidViewModel(application)
 
     private val _backupState = MutableStateFlow<BackupState>(BackupState.Idle)
     val backupState: StateFlow<BackupState> = _backupState.asStateFlow()
+
+    private val _searchQuery = MutableStateFlow("")
+    val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
+
+    val filteredAppList: StateFlow<List<AppInfo>> = combine(
+        _appList, _searchQuery
+    ) { apps, query ->
+        if (query.isBlank()) apps
+        else apps.filter {
+            it.name.contains(query, ignoreCase = true) ||
+            it.packageName.contains(query, ignoreCase = true)
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private var webDavConfig: PreferencesManager.WebDavConfig? = null
     private var backupJob: Job? = null
@@ -86,6 +102,12 @@ class AppListViewModel(application: Application) : AndroidViewModel(application)
                 onFailure = { BackupState.Error(it.message ?: "备份失败") }
             )
         }
+    }
+
+    fun getFullAppList(): List<AppInfo> = _appList.value
+
+    fun setSearchQuery(query: String) {
+        _searchQuery.value = query
     }
 
     fun cancelBackup() {
