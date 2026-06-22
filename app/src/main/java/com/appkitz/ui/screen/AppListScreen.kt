@@ -180,7 +180,6 @@ fun AppListScreen(
                         } else {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(stringResource(R.string.local_mode), style = MaterialTheme.typography.labelMedium)
-                                Spacer(Modifier.width(4.dp))
                                 Switch(
                                     checked = isLocalMode,
                                     onCheckedChange = { viewModel.setLocalMode(it) },

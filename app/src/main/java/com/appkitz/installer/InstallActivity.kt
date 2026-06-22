@@ -82,16 +82,27 @@ fun InstallScreen(uri: Uri, cacheFile: File?, onCacheFile: (File) -> Unit, onDon
     var entries by remember { mutableStateOf<List<SplitEntry>?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var installing by remember { mutableStateOf(false) }
+    var installError by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(uri) {
         withContext(Dispatchers.IO) {
             try {
                 val file = File(context.cacheDir, "install_${System.nanoTime()}")
-                context.contentResolver.openInputStream(uri)?.use { input ->
+                val inputStream = context.contentResolver.openInputStream(uri)
+                if (inputStream == null) {
+                    error = "无法读取文件"
+                    return@withContext
+                }
+                inputStream.use { input ->
                     FileOutputStream(file).use { output ->
                         input.copyTo(output)
                     }
+                }
+                if (file.length() == 0L) {
+                    file.delete()
+                    error = "文件为空"
+                    return@withContext
                 }
                 onCacheFile(file)
                 entries = if (SplitApkParser.isSplitPackage(file)) {
@@ -103,6 +114,16 @@ fun InstallScreen(uri: Uri, cacheFile: File?, onCacheFile: (File) -> Unit, onDon
                 error = e.message ?: "解析失败"
             }
         }
+    }
+
+    installError?.let {
+        AlertDialog(
+            onDismissRequest = onDone,
+            title = { Text("安装失败") },
+            text = { Text(it) },
+            confirmButton = { TextButton(onClick = onDone) { Text("确定") } }
+        )
+        return
     }
 
     error?.let {
@@ -122,7 +143,10 @@ fun InstallScreen(uri: Uri, cacheFile: File?, onCacheFile: (File) -> Unit, onDon
                 onInstall = { selected ->
                     installing = true
                     scope.launch(Dispatchers.IO) {
-                        installApks(context, cacheFile!!, selected)
+                        installApks(context, cacheFile, selected) { msg ->
+                            installError = msg
+                            installing = false
+                        }
                     }
                 },
                 onDismiss = onDone
@@ -183,21 +207,86 @@ fun InstallDialog(
     )
 }
 
-private fun installApks(context: Context, file: File, selected: List<SplitEntry>) {
+private fun installApks(context: Context, file: File?, selected: List<SplitEntry>, onError: (String) -> Unit) {
+    if (file == null || !file.exists()) {
+        onError("文件不存在")
+        return
+    }
+
+    var session: PackageInstaller.Session? = null
+    var tempBaseApk: File? = null
     try {
         val packageInstaller = context.packageManager.packageInstaller
         val sessionParams = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
+
+        val baseEntry = selected.find { it.type == "base" }
+        if (baseEntry != null) {
+            ZipFile(file).use { zip ->
+                var ze = zip.getEntry(baseEntry.fileName)
+                if (ze == null) {
+                    val entries = zip.entries()
+                    while (entries.hasMoreElements()) {
+                        val e = entries.nextElement()
+                        if (e.name.endsWith("/${baseEntry.fileName}") || e.name == baseEntry.fileName) {
+                            ze = e
+                            break
+                        }
+                    }
+                }
+                if (ze != null) {
+                    tempBaseApk = File(context.cacheDir, "base_${System.nanoTime()}.apk")
+                    zip.getInputStream(ze).use { input ->
+                        FileOutputStream(tempBaseApk!!).use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                    val pkgInfo = context.packageManager.getPackageArchiveInfo(tempBaseApk!!.absolutePath, 0)
+                    if (pkgInfo != null) {
+                        sessionParams.setAppPackageName(pkgInfo.packageName)
+                    }
+                }
+            }
+        }
+
         val sessionId = packageInstaller.createSession(sessionParams)
-        val session = packageInstaller.openSession(sessionId)
+        session = packageInstaller.openSession(sessionId)
 
         ZipFile(file).use { zip ->
             for (entry in selected) {
-                val ze = zip.getEntry(entry.fileName) ?: continue
-                val size = ze.size
-                zip.getInputStream(ze).use { input ->
-                    session.openWrite(entry.fileName, 0, size).use { output ->
-                        input.copyTo(output)
-                        session.fsync(output)
+                var ze = zip.getEntry(entry.fileName)
+                if (ze == null) {
+                    val entries = zip.entries()
+                    while (entries.hasMoreElements()) {
+                        val e = entries.nextElement()
+                        if (e.name.endsWith("/${entry.fileName}") || e.name == entry.fileName) {
+                            ze = e
+                            break
+                        }
+                    }
+                }
+                if (ze == null) continue
+                var actualSize = ze.size
+                if (actualSize < 0) {
+                    val tempFile = File(context.cacheDir, "tmp_${System.nanoTime()}")
+                    zip.getInputStream(ze).use { input ->
+                        FileOutputStream(tempFile).use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                    actualSize = tempFile.length()
+                    tempFile.inputStream().use { input ->
+                        session.openWrite(entry.fileName, 0, actualSize).use { out ->
+                            input.copyTo(out)
+                            session.fsync(out)
+                        }
+                    }
+                    tempFile.delete()
+                } else {
+                    zip.getInputStream(ze).use { input ->
+                        session.openWrite(entry.fileName, 0, actualSize).use { out ->
+                            input.copyTo(out)
+                            session.fsync(out)
+                        }
                     }
                 }
             }
@@ -209,11 +298,10 @@ private fun installApks(context: Context, file: File, selected: List<SplitEntry>
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
         session.commit(pendingIntent.intentSender)
-        session.close()
     } catch (e: Exception) {
-        android.os.Handler(context.mainLooper).post {
-            Toast.makeText(context, "安装失败: ${e.message}", Toast.LENGTH_LONG).show()
-            (context as? InstallActivity)?.finish()
-        }
+        try { session?.abandon() } catch (_: Exception) {}
+        onError(e.message ?: "未知错误")
+    } finally {
+        tempBaseApk?.delete()
     }
 }

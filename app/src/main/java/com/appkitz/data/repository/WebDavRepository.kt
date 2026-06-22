@@ -176,7 +176,15 @@ class WebDavRepository(private val app: Application? = null) {
             if (resp.isSuccessful) return
             when (resp.code) {
                 405 -> return
-                409 -> throw IOException(str(R.string.parent_dir_not_found))
+                409 -> {
+                    val baseUrl = dirUrl.substringBeforeLast('/')
+                    if (baseUrl.isNotEmpty()) {
+                        ensureDirectory(baseUrl, credential)
+                        ensureDirectory(dirUrl, credential)
+                    } else {
+                        throw IOException(str(R.string.parent_dir_not_found))
+                    }
+                }
                 401, 403 -> throw IOException(str(R.string.auth_failed_create_dir))
                 404 -> throw IOException(str(R.string.parent_dir_not_found_webdav))
                 else -> throw IOException(str(R.string.create_dir_failed, resp.code))
