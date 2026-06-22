@@ -42,34 +42,36 @@ class InstallActivity : ComponentActivity() {
     private val installReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)
-            if (status == PackageInstaller.STATUS_PENDING_USER_ACTION) {
-                val confirmIntent = if (Build.VERSION.SDK_INT >= 33) {
-                    intent.getParcelableExtra(Intent.EXTRA_INTENT, Intent::class.java)
-                } else {
-                    @Suppress("DEPRECATION") intent.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)
-                }
-                if (confirmIntent != null) {
-                    context.startActivity(confirmIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                } else {
-                    val sender = if (Build.VERSION.SDK_INT >= 33) {
-                        intent.getParcelableExtra(Intent.EXTRA_INTENT, IntentSender::class.java)
+            when (status) {
+                PackageInstaller.STATUS_PENDING_USER_ACTION -> {
+                    val confirmIntent = if (Build.VERSION.SDK_INT >= 33) {
+                        intent.getParcelableExtra(Intent.EXTRA_INTENT, Intent::class.java)
                     } else {
-                        @Suppress("DEPRECATION") intent.getParcelableExtra<IntentSender>(Intent.EXTRA_INTENT)
+                        @Suppress("DEPRECATION") intent.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)
                     }
-                    if (sender != null) {
-                        try { context.startIntentSender(sender, null, 0, 0, 0) } catch (_: Exception) {}
+                    if (confirmIntent != null) {
+                        context.startActivity(confirmIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    } else {
+                        val sender = if (Build.VERSION.SDK_INT >= 33) {
+                            intent.getParcelableExtra(Intent.EXTRA_INTENT, IntentSender::class.java)
+                        } else {
+                            @Suppress("DEPRECATION") intent.getParcelableExtra<IntentSender>(Intent.EXTRA_INTENT)
+                        }
+                        if (sender != null) {
+                            try { context.startIntentSender(sender, null, 0, 0, 0) } catch (_: Exception) {}
+                        }
                     }
                 }
-                return
+                PackageInstaller.STATUS_SUCCESS -> {
+                    Toast.makeText(context, "安装成功", Toast.LENGTH_LONG).show()
+                    finish()
+                }
+                else -> {
+                    val message = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)
+                    Toast.makeText(context, "安装失败 [${status}]: ${message ?: "未知错误"}", Toast.LENGTH_LONG).show()
+                    finish()
+                }
             }
-            val message = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)
-            val toast = if (status == PackageInstaller.STATUS_SUCCESS) {
-                "安装成功"
-            } else {
-                "安装失败 [${status}]: ${message ?: "未知错误"}"
-            }
-            Toast.makeText(context, toast, Toast.LENGTH_LONG).show()
-            finish()
         }
     }
 
@@ -348,6 +350,7 @@ private fun installApks(context: Context, file: File, selected: List<SplitEntry>
     try {
         val packageInstaller = context.packageManager.packageInstaller
         val sessionParams = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
+        sessionParams.setInstallerPackageName(context.packageName)
 
         val isSingleApk = selected.size == 1 && selected[0].fileName == file.name
 
@@ -452,9 +455,9 @@ private fun installApks(context: Context, file: File, selected: List<SplitEntry>
             }
         }
 
+        val resultIntent = Intent(InstallActivity.ACTION_INSTALL_RESULT).setPackage(context.packageName)
         val pendingIntent = PendingIntent.getBroadcast(
-            context, sessionId,
-            Intent(InstallActivity.ACTION_INSTALL_RESULT),
+            context, sessionId, resultIntent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
         session.commit(pendingIntent.intentSender)
