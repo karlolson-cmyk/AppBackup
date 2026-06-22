@@ -48,7 +48,6 @@ dependencies {
     implementation(libs.compose.ui)
     implementation(libs.compose.ui.tooling.preview)
     implementation(libs.okhttp)
-    implementation(libs.okhttp.sse)
     debugImplementation(libs.compose.ui.tooling)
 
     testImplementation("junit:junit:4.13.2")

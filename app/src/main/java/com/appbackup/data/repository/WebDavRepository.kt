@@ -3,17 +3,21 @@ package com.appbackup.data.repository
 import com.appbackup.data.model.AppInfo
 import com.appbackup.data.pref.PreferencesManager
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import okhttp3.Credentials
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.io.File
+import java.io.FileInputStream
 import java.io.IOException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
+import java.security.DigestInputStream
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 import javax.net.ssl.SSLHandshakeException
@@ -67,7 +71,8 @@ class WebDavRepository {
 
     suspend fun backupApps(
         apps: List<AppInfo>,
-        config: PreferencesManager.WebDavConfig
+        config: PreferencesManager.WebDavConfig,
+        onProgress: (String, Float) -> Unit = { _, _ -> }
     ): Result<Map<AppInfo, String>> = withContext(Dispatchers.IO) {
         val results = mutableMapOf<AppInfo, String>()
         val baseUrl = normalizeUrl(config.url)
@@ -76,7 +81,10 @@ class WebDavRepository {
 
         ensureDirectory(appDir, credential)
 
-        for (app in apps) {
+        for ((index, app) in apps.withIndex()) {
+            if (!isActive) break
+            val progress = (index.toFloat() + 1) / apps.size
+            onProgress(app.name, progress)
             val result = try {
                 backupSingleApp(app, appDir, credential)
                 Result.success(app.name)
@@ -112,12 +120,17 @@ class WebDavRepository {
         ensureDirectory(dirUrl, credential)
 
         val apkFile = File(app.apkPath)
-        val apkBytes = apkFile.readBytes()
+        val apkMd5 = MessageDigest.getInstance("MD5").let { md ->
+            FileInputStream(apkFile).use { fis ->
+                DigestInputStream(fis, md).use { dis ->
+                    val buf = ByteArray(8192)
+                    while (dis.read(buf) != -1) { }
+                }
+            }
+            md.digest().joinToString("") { "%02x".format(it) }
+        }
 
-        val apkMd5 = MessageDigest.getInstance("MD5").digest(apkBytes)
-            .joinToString("") { "%02x".format(it) }
-
-        putFile("$dirUrl/$sanitizedName.apk", apkBytes, credential)
+        putFile("$dirUrl/$sanitizedName.apk", apkFile, credential)
 
         val jsonObj = JSONObject().apply {
             put("name", app.name)
@@ -141,10 +154,25 @@ class WebDavRepository {
             if (resp.isSuccessful) return
             when (resp.code) {
                 405 -> return // already exists as collection
-                409 -> return // parent doesn't exist, will fail at PUT
+                409 -> throw IOException("WebDAV 父目录不存在，请检查路径")
                 401, 403 -> throw IOException("WebDAV 认证失败，无法创建目录")
                 404 -> throw IOException("WebDAV 父目录不存在")
                 else -> throw IOException("创建目录失败 (${resp.code})")
+            }
+        }
+    }
+
+    private fun putFile(url: String, file: File, credential: String) {
+        val body = file.asRequestBody("application/octet-stream".toMediaType())
+        val request = Request.Builder()
+            .url(url)
+            .put(body)
+            .header("Authorization", credential)
+            .build()
+        val response = client.newCall(request).execute()
+        response.use { resp ->
+            if (!resp.isSuccessful) {
+                throw IOException("上传失败 (${resp.code})")
             }
         }
     }

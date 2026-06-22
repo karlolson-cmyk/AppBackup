@@ -35,7 +35,7 @@ fun AppListScreen(
             BackupProgressDialog(
                 message = state.currentApp,
                 progress = state.progress,
-                onCancel = { viewModel.resetBackupState() }
+                onCancel = { viewModel.cancelBackup() }
             )
         }
         is BackupState.Completed -> {

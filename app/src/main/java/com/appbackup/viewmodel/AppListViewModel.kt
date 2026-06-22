@@ -7,6 +7,7 @@ import com.appbackup.data.model.AppInfo
 import com.appbackup.data.pref.PreferencesManager
 import com.appbackup.data.repository.AppRepository
 import com.appbackup.data.repository.WebDavRepository
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -31,6 +32,7 @@ class AppListViewModel(application: Application) : AndroidViewModel(application)
     val backupState: StateFlow<BackupState> = _backupState.asStateFlow()
 
     private var webDavConfig: PreferencesManager.WebDavConfig? = null
+    private var backupJob: Job? = null
 
     fun setWebDavConfig(config: PreferencesManager.WebDavConfig) {
         webDavConfig = config
@@ -66,14 +68,21 @@ class AppListViewModel(application: Application) : AndroidViewModel(application)
             return
         }
 
-        viewModelScope.launch {
+        backupJob = viewModelScope.launch {
             _backupState.value = BackupState.InProgress("准备中...", 0f)
-            val result = webDavRepository.backupApps(selected, config)
+            val result = webDavRepository.backupApps(selected, config) { appName, progress ->
+                _backupState.value = BackupState.InProgress(appName, progress)
+            }
             _backupState.value = result.fold(
                 onSuccess = { BackupState.Completed(it) },
                 onFailure = { BackupState.Error(it.message ?: "备份失败") }
             )
         }
+    }
+
+    fun cancelBackup() {
+        backupJob?.cancel()
+        _backupState.value = BackupState.Idle
     }
 
     fun resetBackupState() {
