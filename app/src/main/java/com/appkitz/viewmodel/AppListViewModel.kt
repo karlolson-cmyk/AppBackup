@@ -33,6 +33,7 @@ class AppListViewModel(application: Application) : AndroidViewModel(application)
 
     private val appRepository = AppRepository(application)
     private val webDavRepository = WebDavRepository(application)
+    private val prefsManager = PreferencesManager(application)
 
     private val _appList = MutableStateFlow<List<AppInfo>>(emptyList())
     val appList: StateFlow<List<AppInfo>> = _appList.asStateFlow()
@@ -89,6 +90,10 @@ class AppListViewModel(application: Application) : AndroidViewModel(application)
 
     private var webDavConfig: PreferencesManager.WebDavConfig? = null
     private var backupJob: Job? = null
+
+    init {
+        webDavConfig = prefsManager.loadWebDavConfig()
+    }
 
     private val _isLocalMode = MutableStateFlow(false)
     val isLocalMode: StateFlow<Boolean> = _isLocalMode.asStateFlow()

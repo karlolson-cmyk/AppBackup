@@ -53,7 +53,10 @@ class InstallActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         registerReceiver(installReceiver, IntentFilter(ACTION_INSTALL_RESULT), if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) RECEIVER_NOT_EXPORTED else 0)
 
-        val uri = intent?.data ?: run {
+        val uri = when (intent?.action) {
+            Intent.ACTION_SEND -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java) else intent.getParcelableExtra(Intent.EXTRA_STREAM)
+            else -> intent?.data
+        } ?: run {
             Toast.makeText(this, "未指定文件", Toast.LENGTH_SHORT).show()
             finish()
             return

@@ -64,26 +64,27 @@ fun AppCard(
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            Spacer(Modifier.width(8.dp))
-            Icon(
-                Icons.Default.Info,
-                contentDescription = stringResource(R.string.app_info),
-                modifier = Modifier
-                    .size(16.dp)
-                    .clickable {
-                        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                            data = Uri.parse("package:${app.packageName}")
-                        }
-                        context.startActivity(intent)
-                    },
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(Modifier.width(8.dp))
-            Text(
-                text = formatSize(app.apkSize),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = formatSize(app.apkSize),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.width(4.dp))
+                Icon(
+                    Icons.Default.Info,
+                    contentDescription = stringResource(R.string.app_info),
+                    modifier = Modifier
+                        .size(16.dp)
+                        .clickable {
+                            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                data = Uri.parse("package:${app.packageName}")
+                            }
+                            context.startActivity(intent)
+                        },
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
     }
 }
