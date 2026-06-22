@@ -5,6 +5,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.IntentSender
 import android.content.pm.PackageInstaller
 import android.net.Uri
 import android.os.Build
@@ -41,7 +42,26 @@ class InstallActivity : ComponentActivity() {
     private val installReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)
-            if (status == PackageInstaller.STATUS_PENDING_USER_ACTION) return
+            if (status == PackageInstaller.STATUS_PENDING_USER_ACTION) {
+                val confirmIntent = if (Build.VERSION.SDK_INT >= 33) {
+                    intent.getParcelableExtra(Intent.EXTRA_INTENT, Intent::class.java)
+                } else {
+                    @Suppress("DEPRECATION") intent.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)
+                }
+                if (confirmIntent != null) {
+                    context.startActivity(confirmIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                } else {
+                    val sender = if (Build.VERSION.SDK_INT >= 33) {
+                        intent.getParcelableExtra(Intent.EXTRA_INTENT, IntentSender::class.java)
+                    } else {
+                        @Suppress("DEPRECATION") intent.getParcelableExtra<IntentSender>(Intent.EXTRA_INTENT)
+                    }
+                    if (sender != null) {
+                        try { context.startIntentSender(sender, null, 0, 0, 0) } catch (_: Exception) {}
+                    }
+                }
+                return
+            }
             val message = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)
             val toast = if (status == PackageInstaller.STATUS_SUCCESS) {
                 "安装成功"
