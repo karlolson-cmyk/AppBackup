@@ -9,10 +9,13 @@ import android.content.pm.PackageInstaller
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.util.DisplayMetrics
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -25,6 +28,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
+import java.util.Locale
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 
@@ -41,7 +45,7 @@ class InstallActivity : ComponentActivity() {
             val toast = if (status == PackageInstaller.STATUS_SUCCESS) {
                 "安装成功"
             } else {
-                "安装失败: ${message ?: "未知错误"}"
+                "安装失败 [${status}]: ${message ?: "未知错误"}"
             }
             Toast.makeText(context, toast, Toast.LENGTH_LONG).show()
             finish()
@@ -180,13 +184,17 @@ fun InstallDialog(
     onInstall: (List<SplitEntry>) -> Unit,
     onDismiss: () -> Unit
 ) {
-    var selected by remember { mutableStateOf(entries.filter { it.isDefault }.toSet()) }
+    val context = LocalContext.current
+    val defaults = remember(entries) { computeSmartDefaults(context, entries) }
+    var selected by remember { mutableStateOf(defaults) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("选择安装选项") },
         text = {
-            Column {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState())
+            ) {
                 entries.forEach { entry ->
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -212,6 +220,77 @@ fun InstallDialog(
             TextButton(onClick = onDismiss) { Text("取消") }
         }
     )
+}
+
+private const val DENSITY_UNKNOWN = Integer.MAX_VALUE
+private val DENSITY_VALUES = mapOf(
+    "ldpi" to 120, "mdpi" to 160, "hdpi" to 240, "xhdpi" to 320,
+    "xxhdpi" to 480, "xxxhdpi" to 640, "tvdpi" to 213
+)
+
+private fun computeSmartDefaults(context: Context, entries: List<SplitEntry>): Set<SplitEntry> {
+    val result = mutableSetOf<SplitEntry>()
+    val deviceAbis = Build.SUPPORTED_ABIS.toSet()
+    val deviceDensity = context.resources.displayMetrics.densityDpi
+    val deviceLocale = Locale.getDefault().language
+
+    var bestAbi: SplitEntry? = null
+    var bestDensity: SplitEntry? = null
+    var bestDensityDiff = DENSITY_UNKNOWN
+    var bestLocale: SplitEntry? = null
+    var seenFeature = mutableSetOf<String?>()
+
+    for (entry in entries) {
+        if (entry.isRequired) {
+            result.add(entry)
+            seenFeature.add(entry.type)
+            continue
+        }
+
+        when (entry.type) {
+            "base" -> {
+                result.add(entry)
+                seenFeature.add(entry.type)
+            }
+            "abi" -> {
+                val match = deviceAbis.any { abi ->
+                    entry.label.contains(abi, ignoreCase = true)
+                }
+                if (match && (bestAbi == null)) {
+                    bestAbi = entry
+                }
+            }
+            "density" -> {
+                val entryDensity = DENSITY_VALUES.entries.find { d ->
+                    entry.label.contains(d.key, ignoreCase = true)
+                }?.value ?: 0
+                if (entryDensity > 0) {
+                    val diff = kotlin.math.abs(entryDensity - deviceDensity)
+                    if (diff < bestDensityDiff) {
+                        bestDensityDiff = diff
+                        bestDensity = entry
+                    }
+                }
+            }
+            "locale" -> {
+                if (entry.label.startsWith(deviceLocale, ignoreCase = true)) {
+                    bestLocale = entry
+                }
+            }
+            else -> {
+                if (entry.type !in seenFeature) {
+                    result.add(entry)
+                    seenFeature.add(entry.type)
+                }
+            }
+        }
+    }
+
+    bestAbi?.let { result.add(it) }
+    bestDensity?.let { result.add(it) }
+    bestLocale?.let { result.add(it) }
+
+    return result
 }
 
 private fun installApks(context: Context, file: File, selected: List<SplitEntry>, onError: (String) -> Unit) {
@@ -336,7 +415,8 @@ private fun installApks(context: Context, file: File, selected: List<SplitEntry>
         session.commit(pendingIntent.intentSender)
     } catch (e: Exception) {
         try { session?.abandon() } catch (_: Exception) {}
-        onError(e.message ?: "未知错误")
+        val errMsg = e.message
+        onError(if (errMsg != null) "${e::class.simpleName}: $errMsg" else "${e::class.simpleName}")
     }
 }
 
