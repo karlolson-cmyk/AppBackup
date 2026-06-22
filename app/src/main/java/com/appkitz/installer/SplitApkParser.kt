@@ -2,6 +2,7 @@ package com.appkitz.installer
 
 import android.os.Build
 import java.io.File
+import java.io.Serializable
 import java.util.zip.ZipFile
 
 data class SplitEntry(
@@ -10,7 +11,9 @@ data class SplitEntry(
     val label: String,
     val isRequired: Boolean = false,
     val isDefault: Boolean = false
-)
+) : Serializable {
+    companion object { private const val serialVersionUID = 1L }
+}
 
 object SplitApkParser {
 

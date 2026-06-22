@@ -1,15 +1,9 @@
 package com.appkitz.installer
 
-import android.app.PendingIntent
-import android.content.BroadcastReceiver
-import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
-import android.content.pm.PackageInstaller
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.util.DisplayMetrics
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -24,61 +18,33 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.appkitz.ui.theme.AppkitzTheme
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 import java.util.Locale
-import java.util.zip.ZipEntry
-import java.util.zip.ZipFile
 
+/**
+ * Thin entry-point Activity launched by the package / .apks / .xapk intent
+ * filters. It only:
+ *   1. Copies the shared file into the cache,
+ *   2. Parses the split layout (so the user can pick/drop splits),
+ *   3. Hands the actual installation off to [InstallService] and finishes.
+ *
+ * All PackageInstaller result handling lives in [InstallResultReceiver]
+ * (manifest-registered) and [InstallService] (foreground service), so this
+ * Activity can be safely destroyed at any point without breaking the install.
+ */
 class InstallActivity : ComponentActivity() {
-
-    companion object {
-        const val ACTION_INSTALL_RESULT = "com.appkitz.INSTALL_RESULT"
-    }
-
-    private val installReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: Intent) {
-            val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)
-            when (status) {
-                PackageInstaller.STATUS_PENDING_USER_ACTION -> {
-                    val confirmIntent = if (Build.VERSION.SDK_INT >= 33) {
-                        intent.getParcelableExtra(Intent.EXTRA_INTENT, Intent::class.java)
-                    } else {
-                        @Suppress("DEPRECATION") intent.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)
-                    }
-                    if (confirmIntent != null) {
-                        try {
-                            context.startActivity(confirmIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                        } catch (e: Exception) {
-                            Toast.makeText(context, "无法打开安装确认页面：${e.message ?: "未知错误"}", Toast.LENGTH_LONG).show()
-                            finish()
-                        }
-                    } else {
-                        Toast.makeText(context, "无法打开安装确认页面", Toast.LENGTH_LONG).show()
-                        finish()
-                    }
-                }
-                PackageInstaller.STATUS_SUCCESS -> {
-                    Toast.makeText(context, "安装成功", Toast.LENGTH_LONG).show()
-                    finish()
-                }
-                else -> {
-                    val message = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)
-                    Toast.makeText(context, "安装失败 [${status}]: ${message ?: "未知错误"}", Toast.LENGTH_LONG).show()
-                    finish()
-                }
-            }
-        }
-    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        registerReceiver(installReceiver, IntentFilter(ACTION_INSTALL_RESULT), if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) RECEIVER_NOT_EXPORTED else 0)
 
         val uri = when (intent?.action) {
-            Intent.ACTION_SEND -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java) else intent.getParcelableExtra(Intent.EXTRA_STREAM)
+            Intent.ACTION_SEND ->
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
+                    intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
+                else
+                    @Suppress("DEPRECATION") intent.getParcelableExtra(Intent.EXTRA_STREAM)
             else -> intent?.data
         } ?: run {
             Toast.makeText(this, "未指定文件", Toast.LENGTH_SHORT).show()
@@ -92,11 +58,6 @@ class InstallActivity : ComponentActivity() {
             }
         }
     }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        try { unregisterReceiver(installReceiver) } catch (_: Exception) {}
-    }
 }
 
 @Composable
@@ -105,10 +66,8 @@ fun InstallScreen(uri: Uri, onDone: () -> Unit) {
     var cacheFile by remember { mutableStateOf<File?>(null) }
     var entries by remember { mutableStateOf<List<SplitEntry>?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
-    var installing by remember { mutableStateOf(false) }
-    var installError by remember { mutableStateOf<String?>(null) }
     var showPermissionDialog by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
+    var launching by remember { mutableStateOf(false) }
 
     LaunchedEffect(uri) {
         withContext(Dispatchers.IO) {
@@ -122,9 +81,7 @@ fun InstallScreen(uri: Uri, onDone: () -> Unit) {
                     return@withContext
                 }
                 inputStream.use { input ->
-                    FileOutputStream(file).use { output ->
-                        input.copyTo(output)
-                    }
+                    FileOutputStream(file).use { output -> input.copyTo(output) }
                 }
                 if (file.length() == 0L) {
                     file.delete()
@@ -154,24 +111,18 @@ fun InstallScreen(uri: Uri, onDone: () -> Unit) {
             onDismissRequest = onDone,
             title = { Text("需要权限") },
             text = { Text("安装应用需要开启「安装未知应用」权限。\n请前往：设置 → 特殊权限 → 安装未知应用 → Appkitz → 允许") },
-            confirmButton = { TextButton(onClick = {
-                Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).also {
-                    it.data = android.net.Uri.parse("package:${context.packageName}")
-                    context.startActivity(it)
-                }
-                showPermissionDialog = false
-            }) { Text("去设置") } },
-            dismissButton = { TextButton(onClick = { showPermissionDialog = false; onDone() }) { Text("取消") } }
-        )
-        return
-    }
-
-    installError?.let {
-        AlertDialog(
-            onDismissRequest = onDone,
-            title = { Text("安装失败") },
-            text = { Text(it) },
-            confirmButton = { TextButton(onClick = onDone) { Text("确定") } }
+            confirmButton = {
+                TextButton(onClick = {
+                    Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).also {
+                        it.data = android.net.Uri.parse("package:${context.packageName}")
+                        context.startActivity(it)
+                    }
+                    showPermissionDialog = false
+                }) { Text("去设置") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPermissionDialog = false; onDone() }) { Text("取消") }
+            }
         )
         return
     }
@@ -187,41 +138,32 @@ fun InstallScreen(uri: Uri, onDone: () -> Unit) {
     }
 
     entries?.let { apkEntries ->
-        if (!installing) {
+        if (!launching) {
             InstallDialog(
                 entries = apkEntries,
                 onInstall = { selected ->
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !context.packageManager.canRequestPackageInstalls()) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+                        !context.packageManager.canRequestPackageInstalls()
+                    ) {
                         showPermissionDialog = true
                         return@InstallDialog
                     }
-                    installing = true
                     val file = cacheFile
-                    if (file == null) {
-                        installError = "文件不存在"
-                        installing = false
+                    if (file == null || !file.exists()) {
+                        Toast.makeText(context, "文件不存在", Toast.LENGTH_SHORT).show()
                         return@InstallDialog
                     }
-                    scope.launch(Dispatchers.IO) {
-                        installApks(context, file, selected) { msg ->
-                            scope.launch(Dispatchers.Main) {
-                                installError = msg
-                                installing = false
-                            }
-                        }
-                    }
+                    // Hand the work to the foreground service and let the
+                    // system install confirmation UI take over.
+                    launching = true
+                    InstallService.start(context, file, selected)
+                    onDone() // finish this Activity; the service + receiver carry on
                 },
                 onDismiss = onDone
             )
         } else {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    CircularProgressIndicator()
-                    Spacer(Modifier.height(16.dp))
-                    Text("正在安装...")
-                    Spacer(Modifier.height(24.dp))
-                    OutlinedButton(onClick = onDone) { Text("取消") }
-                }
+                CircularProgressIndicator()
             }
         }
     } ?: run {
@@ -245,9 +187,7 @@ fun InstallDialog(
         onDismissRequest = onDismiss,
         title = { Text("选择安装选项") },
         text = {
-            Column(
-                modifier = Modifier.verticalScroll(rememberScrollState())
-            ) {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                 entries.forEach { entry ->
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -281,7 +221,7 @@ private val DENSITY_VALUES = mapOf(
     "xxhdpi" to 480, "xxxhdpi" to 640, "tvdpi" to 213
 )
 
-private fun computeSmartDefaults(context: Context, entries: List<SplitEntry>): Set<SplitEntry> {
+private fun computeSmartDefaults(context: android.content.Context, entries: List<SplitEntry>): Set<SplitEntry> {
     val result = mutableSetOf<SplitEntry>()
     val deviceAbis = Build.SUPPORTED_ABIS.toSet()
     val deviceDensity = context.resources.displayMetrics.densityDpi
@@ -291,7 +231,7 @@ private fun computeSmartDefaults(context: Context, entries: List<SplitEntry>): S
     var bestDensity: SplitEntry? = null
     var bestDensityDiff = DENSITY_UNKNOWN
     var bestLocale: SplitEntry? = null
-    var seenFeature = mutableSetOf<String?>()
+    val seenFeature = mutableSetOf<String>()
 
     for (entry in entries) {
         if (entry.isRequired) {
@@ -309,7 +249,7 @@ private fun computeSmartDefaults(context: Context, entries: List<SplitEntry>): S
                 val match = deviceAbis.any { abi ->
                     entry.label.contains(abi, ignoreCase = true)
                 }
-                if (match && (bestAbi == null)) {
+                if (match && bestAbi == null) {
                     bestAbi = entry
                 }
             }
@@ -344,206 +284,4 @@ private fun computeSmartDefaults(context: Context, entries: List<SplitEntry>): S
     bestLocale?.let { result.add(it) }
 
     return result
-}
-
-private fun installApks(context: Context, file: File, selected: List<SplitEntry>, onError: (String) -> Unit) {
-    if (!file.exists()) {
-        onError("文件不存在")
-        return
-    }
-
-    if (selected.isEmpty()) {
-        onError("请选择至少一个 APK")
-        return
-    }
-
-    var session: PackageInstaller.Session? = null
-    try {
-        val packageInstaller = context.packageManager.packageInstaller
-        val sessionParams = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
-        sessionParams.setInstallerPackageName(context.packageName)
-
-        val isSingleApk = selected.size == 1 && selected[0].fileName == file.name
-
-        if (isSingleApk) {
-            sessionParams.setSize(file.length())
-        } else {
-            ZipFile(file).use { zip ->
-                val missingEntry = selected.firstOrNull { findZipEntry(zip, it.fileName) == null }
-                if (missingEntry != null) {
-                    onError("安装包中缺少 ${missingEntry.fileName}")
-                    return
-                }
-
-                var totalSize = 0L
-                var allSizesKnown = true
-                for (entry in selected) {
-                    val size = findZipEntry(zip, entry.fileName)?.size ?: -1L
-                    if (size <= 0L) {
-                        allSizesKnown = false
-                        break
-                    }
-                    totalSize += size
-                }
-                if (allSizesKnown && totalSize > 0L) {
-                    sessionParams.setSize(totalSize)
-                }
-            }
-        }
-
-        val baseEntry = selected.find { it.type == "base" }
-        if (baseEntry != null) {
-            if (isSingleApk) {
-                val pkgInfo = context.packageManager.getPackageArchiveInfo(file.absolutePath, 0)
-                if (pkgInfo != null) {
-                    sessionParams.setAppPackageName(pkgInfo.packageName)
-                }
-            } else {
-                var found = false
-                ZipFile(file).use { zip ->
-                    val ze = findZipEntry(zip, baseEntry.fileName)
-                    if (ze != null) {
-                        val tempBase = File(context.cacheDir, "tmp_base_${System.nanoTime()}.apk")
-                        try {
-                            zip.getInputStream(ze).use { input ->
-                                FileOutputStream(tempBase).use { output ->
-                                    input.copyTo(output)
-                                }
-                            }
-                            val pkgInfo = context.packageManager.getPackageArchiveInfo(tempBase.absolutePath, 0)
-                            if (pkgInfo != null) {
-                                sessionParams.setAppPackageName(pkgInfo.packageName)
-                                found = true
-                            }
-                        } finally {
-                            tempBase.delete()
-                        }
-                    }
-                    if (!found) {
-                        val entries = zip.entries()
-                        while (entries.hasMoreElements()) {
-                            val e = entries.nextElement()
-                            if (e.isDirectory) continue
-                            val name = e.name.substringAfterLast('/')
-                            if (!name.endsWith(".apk", ignoreCase = true)) continue
-                            val tempBase = File(context.cacheDir, "tmp_base_${System.nanoTime()}.apk")
-                            try {
-                                zip.getInputStream(e).use { input ->
-                                    FileOutputStream(tempBase).use { output ->
-                                        input.copyTo(output)
-                                    }
-                                }
-                                val pkgInfo = context.packageManager.getPackageArchiveInfo(tempBase.absolutePath, 0)
-                                if (pkgInfo != null) {
-                                    sessionParams.setAppPackageName(pkgInfo.packageName)
-                                    break
-                                }
-                            } finally {
-                                tempBase.delete()
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        val sessionId = packageInstaller.createSession(sessionParams)
-        session = packageInstaller.openSession(sessionId)
-
-        if (isSingleApk) {
-            file.inputStream().use { input ->
-                session.openWrite(file.name, 0, file.length()).use { out ->
-                    input.copyTo(out)
-                    session.fsync(out)
-                }
-            }
-        } else {
-            ZipFile(file).use { zip ->
-                val usedNames = mutableSetOf<String>()
-                var writtenCount = 0
-                for (entry in selected) {
-                    val ze = findZipEntry(zip, entry.fileName)
-                        ?: throw IllegalStateException("Missing APK entry: ${entry.fileName}")
-                    val sessionName = buildSessionFileName(entry.fileName, usedNames)
-                    var actualSize = ze.size
-                    if (actualSize < 0) {
-                        val tempFile = File(context.cacheDir, "tmp_${System.nanoTime()}")
-                        try {
-                            zip.getInputStream(ze).use { input ->
-                                FileOutputStream(tempFile).use { output ->
-                                    input.copyTo(output)
-                                }
-                            }
-                            actualSize = tempFile.length()
-                            tempFile.inputStream().use { input ->
-                                session.openWrite(sessionName, 0, actualSize).use { out ->
-                                    input.copyTo(out)
-                                    session.fsync(out)
-                                }
-                            }
-                        } finally {
-                            tempFile.delete()
-                        }
-                    } else {
-                        zip.getInputStream(ze).use { input ->
-                            session.openWrite(sessionName, 0, actualSize).use { out ->
-                                input.copyTo(out)
-                                session.fsync(out)
-                            }
-                        }
-                    }
-                    writtenCount++
-                }
-                if (writtenCount != selected.size) {
-                    throw IllegalStateException("Only wrote $writtenCount of ${selected.size} APK entries")
-                }
-            }
-        }
-
-        val resultIntent = Intent(InstallActivity.ACTION_INSTALL_RESULT)
-            .setPackage(context.packageName)
-            .addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
-        val pendingIntentFlags = PendingIntent.FLAG_UPDATE_CURRENT or
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
-        val pendingIntent = PendingIntent.getBroadcast(
-            context, sessionId, resultIntent,
-            pendingIntentFlags
-        )
-        session.commit(pendingIntent.intentSender)
-    } catch (e: Exception) {
-        try { session?.abandon() } catch (_: Exception) {}
-        val errMsg = e.message
-        onError(if (errMsg != null) "${e::class.simpleName}: $errMsg" else "${e::class.simpleName}")
-    }
-}
-
-private fun buildSessionFileName(fileName: String, usedNames: MutableSet<String>): String {
-    val cleanName = fileName.substringAfterLast('/').ifBlank { "split.apk" }
-    if (usedNames.add(cleanName)) return cleanName
-
-    val baseName = cleanName.substringBeforeLast('.', cleanName)
-    val extension = cleanName.substringAfterLast('.', "")
-    var index = 1
-    while (true) {
-        val candidate = if (extension.isEmpty()) {
-            "${baseName}_$index"
-        } else {
-            "${baseName}_$index.$extension"
-        }
-        if (usedNames.add(candidate)) return candidate
-        index++
-    }
-}
-
-private fun findZipEntry(zip: ZipFile, fileName: String): ZipEntry? {
-    zip.getEntry(fileName)?.let { return it }
-    val entries = zip.entries()
-    while (entries.hasMoreElements()) {
-        val e = entries.nextElement()
-        if (e.isDirectory) continue
-        if (e.name.endsWith("/$fileName") || e.name == fileName) {
-            return e
-        }
-    }
-    return null
 }

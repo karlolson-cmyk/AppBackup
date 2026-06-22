@@ -12,14 +12,21 @@ android {
         applicationId = "com.appkitz"
         minSdk = 30
         targetSdk = 36
-        versionCode = 16
-        versionName = "2.3.5"
+        versionCode = 18
+        versionName = "2.3.7"
     }
 
+    signingConfigs {
+        getByName("debug") {
+            // Reuse the standard debug keystore so the release artifact is
+            // installable out of the box (no dedicated release keystore exists).
+        }
+    }
     buildTypes {
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
     compileOptions {
