@@ -12,6 +12,12 @@
 - **多语言** — 自动跟随系统语言（简体中文 / English）
 - **体验优化** — Material Design 3、自适应主题、120Hz 高刷、加载动画
 
+## 截图
+
+![应用列表](images/1.jpg)
+![WebDAV 配置](images/2.jpg)
+![搜索备份](images/3.jpg)
+
 ## 构建
 
 ```bash
@@ -41,6 +47,12 @@ MIT
 - **Long-press Copy** — Copy package name to clipboard
 - **Multi-language** — Auto-follows system language (简体中文 / English)
 - **UX Optimizations** — Material Design 3, dynamic theming, 120Hz support, loading animation
+
+## Screenshots
+
+![App list](images/1.jpg)
+![WebDAV config](images/2.jpg)
+![Search & backup](images/3.jpg)
 
 ## Build
 
