@@ -1,9 +1,7 @@
 package com.appkitz.installer
 
 import android.os.Build
-import org.json.JSONObject
 import java.io.File
-import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 
 data class SplitEntry(
@@ -22,117 +20,34 @@ object SplitApkParser {
         "xxhdpi" to 480, "xxxhdpi" to 640, "tvdpi" to 213
     )
     private val ABI_MAP = mapOf(
-        "arm64_v8a" to "arm64-v8a", "armeabi_v7a" to "armeabi-v7a",
+        "arm64_v8a" to "arm64-v8a", "arm64-v8a" to "arm64-v8a",
+        "armeabi_v7a" to "armeabi-v7a", "armeabi-v7a" to "armeabi-v7a",
         "arm64" to "arm64-v8a", "armeabi" to "armeabi-v7a",
         "x86_64" to "x86_64", "x86" to "x86"
     )
 
     fun parse(file: File): List<SplitEntry> {
         ZipFile(file).use { zip ->
-            val manifest = findManifest(zip)
-            if (manifest != null) {
-                val json = JSONObject(zip.getInputStream(manifest).bufferedReader().readText())
-                val parsed = parseJsonManifest(json)
-                if (parsed.isNotEmpty()) return parsed
-            }
             return parseByNaming(zip)
         }
-    }
-
-    private fun findManifest(zip: ZipFile): ZipEntry? {
-        val entries = zip.entries()
-        while (entries.hasMoreElements()) {
-            val entry = entries.nextElement()
-            val name = entry.name.substringAfterLast('/')
-            if (name == "manifest.json") return entry
-        }
-        return null
     }
 
     fun isSplitPackage(file: File): Boolean {
         if (!file.canRead()) return false
         try {
             ZipFile(file).use { zip ->
-                var apkCount = 0
                 val entries = zip.entries()
                 while (entries.hasMoreElements()) {
                     val entry = entries.nextElement()
                     if (entry.isDirectory) continue
-                    if (entry.name.substringAfterLast('/').endsWith(".apk")) {
-                        apkCount++
-                        if (apkCount > 1) return true
+                    if (entry.name.substringAfterLast('/').endsWith(".apk", ignoreCase = true)) {
+                        return true
                     }
                 }
-                return apkCount > 1
+                return false
             }
         } catch (_: Exception) {
             return false
-        }
-    }
-
-    private fun parseJsonManifest(json: JSONObject): List<SplitEntry> {
-        val result = mutableListOf<SplitEntry>()
-
-        val splits = json.optJSONArray("splits")
-        if (splits != null) {
-            for (i in 0 until splits.length()) {
-                val split = splits.getJSONObject(i)
-                val name = split.getString("name")
-                val id = split.optString("id", "")
-                val type = split.optInt("type", -1)
-                result.add(parseSplitType(if (id.isNotEmpty()) id else name, type, split))
-            }
-            return result
-        }
-
-        val apkInfo = json.optJSONArray("apk_info")
-        if (apkInfo != null) {
-            for (i in 0 until apkInfo.length()) {
-                val info = apkInfo.getJSONObject(i)
-                val name = info.getString("apk")
-                result.add(SplitEntry(name, "split", name, isDefault = true))
-            }
-            return result
-        }
-
-        val splitApks = json.optJSONArray("split_apks")
-        if (splitApks != null) {
-            for (i in 0 until splitApks.length()) {
-                val entry = splitApks.getJSONObject(i)
-                val file = entry.getString("file")
-                val id = entry.optString("id", "")
-                result.add(SplitEntry(file, if (id == "base") "base" else "split", id.ifEmpty { file }, isDefault = true, isRequired = id == "base"))
-            }
-            return result
-        }
-
-        return result
-    }
-
-    private fun parseSplitType(name: String, type: Int, split: JSONObject): SplitEntry {
-        return when (type) {
-            0 -> SplitEntry(name, "base", "基础 APK", isRequired = true, isDefault = true)
-            1 -> {
-                val abi = split.optString("abi", "")
-                val matched = if (abi.isNotEmpty()) DEVICE_ABIS.any { abi.contains(it, ignoreCase = true) } else true
-                SplitEntry(name, "abi", "$abi 代码", isDefault = matched)
-            }
-            2 -> {
-                val density = split.optString("density", "")
-                SplitEntry(name, "density", "$density 资源", isDefault = true)
-            }
-            3 -> {
-                val locale = split.optString("locale", "")
-                val lang = when {
-                    locale.startsWith("zh") -> "中文"
-                    locale.startsWith("en") -> "English"
-                    locale.startsWith("ja") -> "日本語"
-                    locale.startsWith("ko") -> "한국어"
-                    else -> locale
-                }
-                SplitEntry(name, "locale", "$lang 语言", isDefault = true)
-            }
-            else -> SplitEntry(name, "feature", split.optString("id", name), isDefault = true)
         }
     }
 
@@ -144,7 +59,7 @@ object SplitApkParser {
             if (entry.isDirectory) continue
             val path = entry.name
             val name = path.substringAfterLast('/')
-            if (!name.endsWith(".apk")) continue
+            if (!name.endsWith(".apk", ignoreCase = true)) continue
 
             val lower = name.lowercase()
             when {

@@ -12,8 +12,8 @@ android {
         applicationId = "com.appkitz"
         minSdk = 30
         targetSdk = 36
-        versionCode = 15
-        versionName = "2.3.3"
+        versionCode = 16
+        versionName = "2.3.5"
     }
 
     buildTypes {
