@@ -25,6 +25,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
+import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 
 class InstallActivity : ComponentActivity() {
@@ -220,35 +221,63 @@ private fun installApks(context: Context, file: File, selected: List<SplitEntry>
     }
 
     var session: PackageInstaller.Session? = null
-    var tempBaseApk: File? = null
     try {
         val packageInstaller = context.packageManager.packageInstaller
         val sessionParams = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
 
+        val isSingleApk = selected.size == 1 && selected[0].fileName == file.name
+
         val baseEntry = selected.find { it.type == "base" }
         if (baseEntry != null) {
-            ZipFile(file).use { zip ->
-                var ze = zip.getEntry(baseEntry.fileName)
-                if (ze == null) {
-                    val entries = zip.entries()
-                    while (entries.hasMoreElements()) {
-                        val e = entries.nextElement()
-                        if (e.name.endsWith("/${baseEntry.fileName}") || e.name == baseEntry.fileName) {
-                            ze = e
-                            break
-                        }
-                    }
+            if (isSingleApk) {
+                val pkgInfo = context.packageManager.getPackageArchiveInfo(file.absolutePath, 0)
+                if (pkgInfo != null) {
+                    sessionParams.setAppPackageName(pkgInfo.packageName)
                 }
-                if (ze != null) {
-                    tempBaseApk = File(context.cacheDir, "base_${System.nanoTime()}.apk")
-                    zip.getInputStream(ze).use { input ->
-                        FileOutputStream(tempBaseApk!!).use { output ->
-                            input.copyTo(output)
+            } else {
+                var found = false
+                ZipFile(file).use { zip ->
+                    val ze = findZipEntry(zip, baseEntry.fileName)
+                    if (ze != null) {
+                        val tempBase = File(context.cacheDir, "tmp_base_${System.nanoTime()}.apk")
+                        try {
+                            zip.getInputStream(ze).use { input ->
+                                FileOutputStream(tempBase).use { output ->
+                                    input.copyTo(output)
+                                }
+                            }
+                            val pkgInfo = context.packageManager.getPackageArchiveInfo(tempBase.absolutePath, 0)
+                            if (pkgInfo != null) {
+                                sessionParams.setAppPackageName(pkgInfo.packageName)
+                                found = true
+                            }
+                        } finally {
+                            tempBase.delete()
                         }
                     }
-                    val pkgInfo = context.packageManager.getPackageArchiveInfo(tempBaseApk!!.absolutePath, 0)
-                    if (pkgInfo != null) {
-                        sessionParams.setAppPackageName(pkgInfo.packageName)
+                    if (!found) {
+                        val entries = zip.entries()
+                        while (entries.hasMoreElements()) {
+                            val e = entries.nextElement()
+                            if (e.isDirectory) continue
+                            val name = e.name.substringAfterLast('/')
+                            if (!name.endsWith(".apk")) continue
+                            val tempBase = File(context.cacheDir, "tmp_base_${System.nanoTime()}.apk")
+                            try {
+                                zip.getInputStream(e).use { input ->
+                                    FileOutputStream(tempBase).use { output ->
+                                        input.copyTo(output)
+                                    }
+                                }
+                                val pkgInfo = context.packageManager.getPackageArchiveInfo(tempBase.absolutePath, 0)
+                                if (pkgInfo != null) {
+                                    sessionParams.setAppPackageName(pkgInfo.packageName)
+                                    break
+                                }
+                            } finally {
+                                tempBase.delete()
+                            }
+                        }
                     }
                 }
             }
@@ -257,41 +286,42 @@ private fun installApks(context: Context, file: File, selected: List<SplitEntry>
         val sessionId = packageInstaller.createSession(sessionParams)
         session = packageInstaller.openSession(sessionId)
 
-        ZipFile(file).use { zip ->
-            for (entry in selected) {
-                var ze = zip.getEntry(entry.fileName)
-                if (ze == null) {
-                    val entries = zip.entries()
-                    while (entries.hasMoreElements()) {
-                        val e = entries.nextElement()
-                        if (e.name.endsWith("/${entry.fileName}") || e.name == entry.fileName) {
-                            ze = e
-                            break
-                        }
-                    }
+        if (isSingleApk) {
+            file.inputStream().use { input ->
+                session.openWrite(file.name, 0, file.length()).use { out ->
+                    input.copyTo(out)
+                    session.fsync(out)
                 }
-                if (ze == null) continue
-                var actualSize = ze.size
-                if (actualSize < 0) {
-                    val tempFile = File(context.cacheDir, "tmp_${System.nanoTime()}")
-                    zip.getInputStream(ze).use { input ->
-                        FileOutputStream(tempFile).use { output ->
-                            input.copyTo(output)
+            }
+        } else {
+            ZipFile(file).use { zip ->
+                for (entry in selected) {
+                    val ze = findZipEntry(zip, entry.fileName) ?: continue
+                    var actualSize = ze.size
+                    if (actualSize < 0) {
+                        val tempFile = File(context.cacheDir, "tmp_${System.nanoTime()}")
+                        try {
+                            zip.getInputStream(ze).use { input ->
+                                FileOutputStream(tempFile).use { output ->
+                                    input.copyTo(output)
+                                }
+                            }
+                            actualSize = tempFile.length()
+                            tempFile.inputStream().use { input ->
+                                session.openWrite(entry.fileName, 0, actualSize).use { out ->
+                                    input.copyTo(out)
+                                    session.fsync(out)
+                                }
+                            }
+                        } finally {
+                            tempFile.delete()
                         }
-                    }
-                    actualSize = tempFile.length()
-                    tempFile.inputStream().use { input ->
-                        session.openWrite(entry.fileName, 0, actualSize).use { out ->
-                            input.copyTo(out)
-                            session.fsync(out)
-                        }
-                    }
-                    tempFile.delete()
-                } else {
-                    zip.getInputStream(ze).use { input ->
-                        session.openWrite(entry.fileName, 0, actualSize).use { out ->
-                            input.copyTo(out)
-                            session.fsync(out)
+                    } else {
+                        zip.getInputStream(ze).use { input ->
+                            session.openWrite(entry.fileName, 0, actualSize).use { out ->
+                                input.copyTo(out)
+                                session.fsync(out)
+                            }
                         }
                     }
                 }
@@ -307,7 +337,18 @@ private fun installApks(context: Context, file: File, selected: List<SplitEntry>
     } catch (e: Exception) {
         try { session?.abandon() } catch (_: Exception) {}
         onError(e.message ?: "未知错误")
-    } finally {
-        tempBaseApk?.delete()
     }
+}
+
+private fun findZipEntry(zip: ZipFile, fileName: String): ZipEntry? {
+    zip.getEntry(fileName)?.let { return it }
+    val entries = zip.entries()
+    while (entries.hasMoreElements()) {
+        val e = entries.nextElement()
+        if (e.isDirectory) continue
+        if (e.name.endsWith("/$fileName") || e.name == fileName) {
+            return e
+        }
+    }
+    return null
 }

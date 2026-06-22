@@ -50,8 +50,24 @@ object SplitApkParser {
     }
 
     fun isSplitPackage(file: File): Boolean {
-        val name = file.name.lowercase()
-        return name.endsWith(".apks") || name.endsWith(".xapk") || name.endsWith(".apkm")
+        if (!file.canRead()) return false
+        try {
+            ZipFile(file).use { zip ->
+                var apkCount = 0
+                val entries = zip.entries()
+                while (entries.hasMoreElements()) {
+                    val entry = entries.nextElement()
+                    if (entry.isDirectory) continue
+                    if (entry.name.substringAfterLast('/').endsWith(".apk")) {
+                        apkCount++
+                        if (apkCount > 1) return true
+                    }
+                }
+                return apkCount > 1
+            }
+        } catch (_: Exception) {
+            return false
+        }
     }
 
     private fun parseJsonManifest(json: JSONObject): List<SplitEntry> {
@@ -75,6 +91,17 @@ object SplitApkParser {
                 val info = apkInfo.getJSONObject(i)
                 val name = info.getString("apk")
                 result.add(SplitEntry(name, "split", name, isDefault = true))
+            }
+            return result
+        }
+
+        val splitApks = json.optJSONArray("split_apks")
+        if (splitApks != null) {
+            for (i in 0 until splitApks.length()) {
+                val entry = splitApks.getJSONObject(i)
+                val file = entry.getString("file")
+                val id = entry.optString("id", "")
+                result.add(SplitEntry(file, if (id == "base") "base" else "split", id.ifEmpty { file }, isDefault = true, isRequired = id == "base"))
             }
             return result
         }
@@ -143,7 +170,18 @@ object SplitApkParser {
             }
         }
         if (result.none { it.type == "base" } && result.any { it.type != "base" }) {
-            result.add(0, SplitEntry("base.apk", "base", "基础 APK", isRequired = true, isDefault = true))
+            val firstNonConfig = result.find { e ->
+                val fn = e.fileName.substringAfterLast('/')
+                !fn.startsWith("split_config.") && !fn.startsWith("config.") && !e.type.startsWith("abi") && !e.type.startsWith("density") && !e.type.startsWith("locale")
+            }
+            if (firstNonConfig != null) {
+                result.remove(firstNonConfig)
+                result.add(0, firstNonConfig.copy(type = "base", label = "基础 APK", isRequired = true, isDefault = true))
+            } else {
+                val first = result.first()
+                result.remove(first)
+                result.add(0, first.copy(type = "base", label = "基础 APK", isRequired = true, isDefault = true))
+            }
         }
         return result
     }
