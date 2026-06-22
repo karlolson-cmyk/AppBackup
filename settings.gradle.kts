@@ -12,5 +12,5 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
-rootProject.name = "AppBackup"
+rootProject.name = "Appkitz"
 include(":app")

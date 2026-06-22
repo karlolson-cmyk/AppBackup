@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">APP备份</string>
-    <string name="title_app_backup">APP 备份</string>
+    <string name="app_name">Appkitz</string>
+    <string name="title_appkitz">Appkitz</string>
     <string name="webdav_config">WebDAV 配置</string>
     <string name="server_url">服务器地址</string>
     <string name="server_url_placeholder">https://dav.example.com</string>
@@ -12,6 +12,8 @@
     <string name="search_hint">搜索应用...</string>
     <string name="close_search">关闭搜索</string>
     <string name="search">搜索</string>
+    <string name="app_info">应用信息</string>
+    <string name="local_mode">本地模式</string>
     <string name="configure">配置</string>
     <string name="copied_package_name">已复制包名：%s</string>
     <string name="backup_complete">备份完成</string>
@@ -24,6 +26,8 @@
     <string name="please_select_apps">请选择要备份的应用</string>
     <string name="backup_to_webdav">备份到 WebDAV</string>
     <string name="backup_to_webdav_with_apk">备份到 WebDAV（含 APK）</string>
+    <string name="backup_local">备份到本地</string>
+    <string name="backup_local_with_apk">备份到本地（含 APK）</string>
     <string name="user_apps">用户应用</string>
     <string name="system_apps">系统应用</string>
     <string name="select_all_format">全选（用户: %1$d/%2$d, 系统: %3$d/%4$d）</string>

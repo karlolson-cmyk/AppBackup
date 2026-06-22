@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">App Backup</string>
-    <string name="title_app_backup">App Backup</string>
+    <string name="app_name">Appkitz</string>
+    <string name="title_appkitz">Appkitz</string>
     <string name="webdav_config">WebDAV Settings</string>
     <string name="server_url">Server URL</string>
     <string name="server_url_placeholder">https://dav.example.com</string>
@@ -12,6 +12,8 @@
     <string name="search_hint">Search apps...</string>
     <string name="close_search">Close search</string>
     <string name="search">Search</string>
+    <string name="app_info">App info</string>
+    <string name="local_mode">Local</string>
     <string name="configure">Settings</string>
     <string name="copied_package_name">Copied: %s</string>
     <string name="backup_complete">Backup Complete</string>
@@ -24,6 +26,8 @@
     <string name="please_select_apps">Please select apps to backup</string>
     <string name="backup_to_webdav">Backup to WebDAV</string>
     <string name="backup_to_webdav_with_apk">Backup to WebDAV (with APK)</string>
+    <string name="backup_local">Backup to Local</string>
+    <string name="backup_local_with_apk">Backup to Local (with APK)</string>
     <string name="user_apps">User Apps</string>
     <string name="system_apps">System Apps</string>
     <string name="select_all_format">Select All (User: %1$d/%2$d, System: %3$d/%4$d)</string>

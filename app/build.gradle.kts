@@ -5,15 +5,15 @@ plugins {
 }
 
 android {
-    namespace = "com.appbackup"
+    namespace = "com.appkitz"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.appbackup"
+        applicationId = "com.appkitz"
         minSdk = 30
         targetSdk = 36
-        versionCode = 8
-        versionName = "1.7.0"
+        versionCode = 9
+        versionName = "2.0.0"
     }
 
     buildTypes {
