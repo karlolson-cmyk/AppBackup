@@ -33,8 +33,6 @@ class InstallActivity : ComponentActivity() {
         const val ACTION_INSTALL_RESULT = "com.appkitz.INSTALL_RESULT"
     }
 
-    private var cacheFile: File? = null
-
     private val installReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)
@@ -64,7 +62,7 @@ class InstallActivity : ComponentActivity() {
 
         setContent {
             AppkitzTheme {
-                InstallScreen(uri = uri, cacheFile = cacheFile, onCacheFile = { cacheFile = it }, onDone = { finish() })
+                InstallScreen(uri = uri, onDone = { finish() })
             }
         }
     }
@@ -72,13 +70,13 @@ class InstallActivity : ComponentActivity() {
     override fun onDestroy() {
         super.onDestroy()
         try { unregisterReceiver(installReceiver) } catch (_: Exception) {}
-        cacheFile?.delete()
     }
 }
 
 @Composable
-fun InstallScreen(uri: Uri, cacheFile: File?, onCacheFile: (File) -> Unit, onDone: () -> Unit) {
+fun InstallScreen(uri: Uri, onDone: () -> Unit) {
     val context = LocalContext.current
+    var cacheFile by remember { mutableStateOf<File?>(null) }
     var entries by remember { mutableStateOf<List<SplitEntry>?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var installing by remember { mutableStateOf(false) }
@@ -88,7 +86,9 @@ fun InstallScreen(uri: Uri, cacheFile: File?, onCacheFile: (File) -> Unit, onDon
     LaunchedEffect(uri) {
         withContext(Dispatchers.IO) {
             try {
-                val file = File(context.cacheDir, "install_${System.nanoTime()}")
+                val ext = uri.pathSegments.lastOrNull()?.substringAfterLast('.', "") ?: ""
+                val cacheName = "install_${System.nanoTime()}" + if (ext.isNotEmpty()) ".$ext" else ""
+                val file = File(context.cacheDir, cacheName)
                 val inputStream = context.contentResolver.openInputStream(uri)
                 if (inputStream == null) {
                     error = "无法读取文件"
@@ -104,7 +104,7 @@ fun InstallScreen(uri: Uri, cacheFile: File?, onCacheFile: (File) -> Unit, onDon
                     error = "文件为空"
                     return@withContext
                 }
-                onCacheFile(file)
+                cacheFile = file
                 entries = if (SplitApkParser.isSplitPackage(file)) {
                     SplitApkParser.parse(file)
                 } else {
@@ -142,8 +142,14 @@ fun InstallScreen(uri: Uri, cacheFile: File?, onCacheFile: (File) -> Unit, onDon
                 entries = apkEntries,
                 onInstall = { selected ->
                     installing = true
+                    val file = cacheFile
+                    if (file == null) {
+                        installError = "文件不存在"
+                        installing = false
+                        return@InstallDialog
+                    }
                     scope.launch(Dispatchers.IO) {
-                        installApks(context, cacheFile, selected) { msg ->
+                        installApks(context, file, selected) { msg ->
                             installError = msg
                             installing = false
                         }
@@ -207,8 +213,8 @@ fun InstallDialog(
     )
 }
 
-private fun installApks(context: Context, file: File?, selected: List<SplitEntry>, onError: (String) -> Unit) {
-    if (file == null || !file.exists()) {
+private fun installApks(context: Context, file: File, selected: List<SplitEntry>, onError: (String) -> Unit) {
+    if (!file.exists()) {
         onError("文件不存在")
         return
     }

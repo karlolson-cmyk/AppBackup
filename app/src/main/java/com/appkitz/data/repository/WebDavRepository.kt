@@ -91,7 +91,7 @@ class WebDavRepository(private val app: Application? = null) {
 
             val datePart = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
             val uniqueId = UUID.randomUUID().toString().replace("-", "").take(6)
-            val sessionDir = "$baseUrl/${str(R.string.app_name)}/${datePart}_$uniqueId"
+            val sessionDir = "$baseUrl/${datePart}_$uniqueId"
 
             ensureDirectory(sessionDir, credential)
 
