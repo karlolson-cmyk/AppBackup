@@ -14,10 +14,9 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Done
-import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.ui.res.painterResource
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -201,12 +200,12 @@ fun AppListScreen(
                     ) {
                         ExtendedFloatingActionButton(
                             onClick = { viewModel.backupSelectedNoApk() },
-                            icon = { Icon(Icons.Default.Share, contentDescription = null) },
+                            icon = { Icon(painterResource(com.appbackup.R.drawable.ic_cloud_upload), contentDescription = null) },
                             text = { Text(stringResource(R.string.backup_to_webdav)) }
                         )
                         ExtendedFloatingActionButton(
                             onClick = { viewModel.backupSelected() },
-                            icon = { Icon(Icons.Default.Done, contentDescription = null) },
+                            icon = { Icon(painterResource(com.appbackup.R.drawable.ic_cloud_plus), contentDescription = null) },
                             text = { Text(stringResource(R.string.backup_to_webdav_with_apk)) }
                         )
                     }
