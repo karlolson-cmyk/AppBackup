@@ -3,6 +3,7 @@ package com.appbackup.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.appbackup.R
 import com.appbackup.data.pref.PreferencesManager
 import com.appbackup.data.repository.WebDavRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -20,7 +21,7 @@ sealed class ConnectionState {
 class WebDavViewModel(application: Application) : AndroidViewModel(application) {
 
     private val prefsManager = PreferencesManager(application)
-    private val repository = WebDavRepository()
+    private val repository = WebDavRepository(application)
 
     private val _connectionState = MutableStateFlow<ConnectionState>(ConnectionState.Idle)
     val connectionState: StateFlow<ConnectionState> = _connectionState.asStateFlow()
@@ -32,9 +33,10 @@ class WebDavViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             _connectionState.value = ConnectionState.Testing
             val result = repository.testConnection(url, username, password)
+            val app = getApplication<Application>()
             _connectionState.value = result.fold(
                 onSuccess = { ConnectionState.Success(it) },
-                onFailure = { ConnectionState.Error(it.message ?: "未知错误") }
+                onFailure = { ConnectionState.Error(it.message ?: app.getString(R.string.unknown_error)) }
             )
         }
     }

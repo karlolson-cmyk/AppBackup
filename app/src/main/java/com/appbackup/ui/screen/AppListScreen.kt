@@ -26,7 +26,9 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.appbackup.R
 import com.appbackup.data.model.AppType
 import com.appbackup.ui.component.AppCard
 import com.appbackup.ui.component.BackupProgressDialog
@@ -91,7 +93,10 @@ fun AppListScreen(
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         clipboard.setPrimaryClip(ClipData.newPlainText("package_name", pkg))
         scope.launch {
-            snackbarHostState.showSnackbar("已复制包名：$pkg", duration = SnackbarDuration.Short)
+            snackbarHostState.showSnackbar(
+                context.getString(R.string.copied_package_name, pkg),
+                duration = SnackbarDuration.Short
+            )
         }
     }
 
@@ -106,7 +111,7 @@ fun AppListScreen(
         is BackupState.Completed -> {
             AlertDialog(
                 onDismissRequest = { viewModel.resetBackupState() },
-                title = { Text("备份完成") },
+                title = { Text(stringResource(R.string.backup_complete)) },
                 text = {
                     Column {
                         state.results.forEach { (app, result) ->
@@ -116,7 +121,7 @@ fun AppListScreen(
                 },
                 confirmButton = {
                     TextButton(onClick = { viewModel.resetBackupState() }) {
-                        Text("确定")
+                        Text(stringResource(R.string.ok))
                     }
                 }
             )
@@ -124,11 +129,11 @@ fun AppListScreen(
         is BackupState.Error -> {
             AlertDialog(
                 onDismissRequest = { viewModel.resetBackupState() },
-                title = { Text("备份出错") },
+                title = { Text(stringResource(R.string.backup_error)) },
                 text = { Text(state.message) },
                 confirmButton = {
                     TextButton(onClick = { viewModel.resetBackupState() }) {
-                        Text("确定")
+                        Text(stringResource(R.string.ok))
                     }
                 }
             )
@@ -150,7 +155,7 @@ fun AppListScreen(
                                     searchQuery = query
                                     viewModel.setSearchQuery(query)
                                 },
-                                placeholder = { Text("搜索应用...") },
+                                placeholder = { Text(stringResource(R.string.search_hint)) },
                                 singleLine = true,
                                 colors = TextFieldDefaults.colors(
                                     unfocusedContainerColor = Color.Transparent,
@@ -161,7 +166,7 @@ fun AppListScreen(
                                     .focusRequester(searchFocusRequester)
                             )
                         } else {
-                            Text("APP 备份")
+                            Text(stringResource(R.string.title_app_backup))
                         }
                     },
                     actions = {
@@ -171,14 +176,14 @@ fun AppListScreen(
                                 searchQuery = ""
                                 viewModel.setSearchQuery("")
                             }) {
-                                Icon(Icons.Default.Close, contentDescription = "关闭搜索")
+                                Icon(Icons.Default.Close, contentDescription = stringResource(R.string.close_search))
                             }
                         } else {
                             IconButton(onClick = { isSearchActive = true }) {
-                                Icon(Icons.Default.Search, contentDescription = "搜索")
+                                Icon(Icons.Default.Search, contentDescription = stringResource(R.string.search))
                             }
                             IconButton(onClick = onConfigureWebDav) {
-                                Icon(Icons.Default.Settings, contentDescription = "配置")
+                                Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.configure))
                             }
                         }
                     }
@@ -197,12 +202,12 @@ fun AppListScreen(
                         ExtendedFloatingActionButton(
                             onClick = { viewModel.backupSelectedNoApk() },
                             icon = { Icon(Icons.Default.Share, contentDescription = null) },
-                            text = { Text("备份到 WebDAV") }
+                            text = { Text(stringResource(R.string.backup_to_webdav)) }
                         )
                         ExtendedFloatingActionButton(
                             onClick = { viewModel.backupSelected() },
                             icon = { Icon(Icons.Default.Done, contentDescription = null) },
-                            text = { Text("备份到 WebDAV（含 APK）") }
+                            text = { Text(stringResource(R.string.backup_to_webdav_with_apk)) }
                         )
                     }
                 }
@@ -228,14 +233,14 @@ fun AppListScreen(
                                 onClick = {
                                     scope.launch { pagerState.animateScrollToPage(0) }
                                 },
-                                text = { Text("用户应用") }
+                                text = { Text(stringResource(R.string.user_apps)) }
                             )
                             Tab(
                                 selected = selectedTab == AppType.SYSTEM,
                                 onClick = {
                                     scope.launch { pagerState.animateScrollToPage(1) }
                                 },
-                                text = { Text("系统应用") }
+                                text = { Text(stringResource(R.string.system_apps)) }
                             )
                         }
 
@@ -250,7 +255,11 @@ fun AppListScreen(
                                 onCheckedChange = { viewModel.selectAll(it) }
                             )
                             Text(
-                                "全选（用户: $userSelectedCount/$userTotalCount, 系统: $systemSelectedCount/$systemTotalCount）"
+                                stringResource(
+                                    R.string.select_all_format,
+                                    userSelectedCount, userTotalCount,
+                                    systemSelectedCount, systemTotalCount
+                                )
                             )
                         }
 

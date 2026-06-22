@@ -3,6 +3,7 @@ package com.appbackup.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.appbackup.R
 import com.appbackup.data.model.AppInfo
 import com.appbackup.data.model.AppType
 import com.appbackup.data.pref.PreferencesManager
@@ -30,7 +31,7 @@ sealed class BackupState {
 class AppListViewModel(application: Application) : AndroidViewModel(application) {
 
     private val appRepository = AppRepository(application)
-    private val webDavRepository = WebDavRepository()
+    private val webDavRepository = WebDavRepository(application)
 
     private val _appList = MutableStateFlow<List<AppInfo>>(emptyList())
     val appList: StateFlow<List<AppInfo>> = _appList.asStateFlow()
@@ -134,24 +135,25 @@ class AppListViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private fun backupSelectedWithApk(includeApk: Boolean) {
+        val app = getApplication<Application>()
         val config = webDavConfig ?: run {
-            _backupState.value = BackupState.Error("请先配置 WebDAV")
+            _backupState.value = BackupState.Error(app.getString(R.string.please_configure_webdav))
             return
         }
         val selected = getSelectedApps()
         if (selected.isEmpty()) {
-            _backupState.value = BackupState.Error("请选择要备份的应用")
+            _backupState.value = BackupState.Error(app.getString(R.string.please_select_apps))
             return
         }
 
         backupJob = viewModelScope.launch {
-            _backupState.value = BackupState.InProgress("准备中...", 0f)
+            _backupState.value = BackupState.InProgress(app.getString(R.string.preparing), 0f)
             val result = webDavRepository.backupApps(selected, config, includeApk) { appName, progress ->
                 _backupState.value = BackupState.InProgress(appName, progress)
             }
             _backupState.value = result.fold(
                 onSuccess = { BackupState.Completed(it) },
-                onFailure = { BackupState.Error(it.message ?: "备份失败") }
+                onFailure = { BackupState.Error(it.message ?: app.getString(R.string.backup_failed)) }
             )
         }
     }

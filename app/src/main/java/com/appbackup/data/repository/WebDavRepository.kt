@@ -1,5 +1,7 @@
 package com.appbackup.data.repository
 
+import android.app.Application
+import com.appbackup.R
 import com.appbackup.data.model.AppInfo
 import com.appbackup.data.pref.PreferencesManager
 import kotlinx.coroutines.Dispatchers
@@ -24,13 +26,18 @@ import java.util.*
 import java.util.concurrent.TimeUnit
 import javax.net.ssl.SSLHandshakeException
 
-class WebDavRepository {
+class WebDavRepository(private val app: Application? = null) {
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .writeTimeout(60, TimeUnit.SECONDS)
         .build()
+
+    private fun str(resId: Int, vararg args: Any): String {
+        val a = app ?: return ""
+        return a.getString(resId, *args)
+    }
 
     suspend fun testConnection(
         url: String,
@@ -48,26 +55,26 @@ class WebDavRepository {
             val response = client.newCall(request).execute()
             response.use { resp ->
                 if (resp.isSuccessful) {
-                    Result.success("连接成功")
+                    Result.success(str(R.string.connection_success))
                 } else {
                     val msg = when (resp.code) {
-                        401, 403 -> "账号或密码错误"
-                        404 -> "路径不存在"
-                        405, 501 -> "服务器不支持 WebDAV"
-                        in 500..599 -> "服务器错误 (${resp.code})"
-                        else -> "连接失败 (${resp.code})"
+                        401, 403 -> str(R.string.auth_error)
+                        404 -> str(R.string.path_not_found)
+                        405, 501 -> str(R.string.webdav_not_supported)
+                        in 500..599 -> str(R.string.server_error, resp.code)
+                        else -> str(R.string.connection_failed, resp.code)
                     }
                     Result.failure(IOException(msg))
                 }
             }
         } catch (e: UnknownHostException) {
-            Result.failure(IOException("无法解析服务器地址"))
+            Result.failure(IOException(str(R.string.invalid_url)))
         } catch (e: SocketTimeoutException) {
-            Result.failure(IOException("连接超时，请检查服务器地址"))
+            Result.failure(IOException(str(R.string.connection_timeout)))
         } catch (e: SSLHandshakeException) {
-            Result.failure(IOException("SSL 证书错误"))
+            Result.failure(IOException(str(R.string.ssl_error)))
         } catch (e: IOException) {
-            Result.failure(IOException("网络错误：${e.message}"))
+            Result.failure(IOException(str(R.string.network_error, e.message ?: "")))
         }
     }
 
@@ -96,21 +103,22 @@ class WebDavRepository {
                 Result.success(app.name)
             } catch (e: Exception) {
                 val errMsg = when (e) {
-                    is IOException -> "网络错误：${e.message}"
-                    else -> "未知错误：${e.message}"
+                    is IOException -> str(R.string.network_error, e.message ?: "")
+                    else -> str(R.string.unknown_error_with_msg, e.message ?: "")
                 }
                 Result.failure<String>(IOException(errMsg))
             }
             result.fold(
-                onSuccess = { results[app] = "成功" },
-                onFailure = { results[app] = it.message ?: "失败" }
+                onSuccess = { results[app] = str(R.string.backup_result_success) },
+                onFailure = { results[app] = it.message ?: str(R.string.backup_result_fail) }
             )
         }
 
-        if (results.all { it.value == "成功" }) {
+        val successStr = str(R.string.backup_result_success)
+        if (results.all { it.value == successStr }) {
             Result.success(results)
-        } else if (results.none { it.value == "成功" }) {
-            Result.failure(IOException("所有应用备份均失败"))
+        } else if (results.none { it.value == successStr }) {
+            Result.failure(IOException(str(R.string.all_backups_failed)))
         } else {
             Result.success(results)
         }
@@ -163,11 +171,11 @@ class WebDavRepository {
         response.use { resp ->
             if (resp.isSuccessful) return
             when (resp.code) {
-                405 -> return // already exists as collection
-                409 -> throw IOException("WebDAV 父目录不存在，请检查路径")
-                401, 403 -> throw IOException("WebDAV 认证失败，无法创建目录")
-                404 -> throw IOException("WebDAV 父目录不存在")
-                else -> throw IOException("创建目录失败 (${resp.code})")
+                405 -> return
+                409 -> throw IOException(str(R.string.parent_dir_not_found))
+                401, 403 -> throw IOException(str(R.string.auth_failed_create_dir))
+                404 -> throw IOException(str(R.string.parent_dir_not_found_webdav))
+                else -> throw IOException(str(R.string.create_dir_failed, resp.code))
             }
         }
     }
@@ -182,7 +190,7 @@ class WebDavRepository {
         val response = client.newCall(request).execute()
         response.use { resp ->
             if (!resp.isSuccessful) {
-                throw IOException("上传失败 (${resp.code})")
+                throw IOException(str(R.string.upload_failed, resp.code))
             }
         }
     }
@@ -197,7 +205,7 @@ class WebDavRepository {
         val response = client.newCall(request).execute()
         response.use { resp ->
             if (!resp.isSuccessful) {
-                throw IOException("上传失败 (${resp.code})")
+                throw IOException(str(R.string.upload_failed, resp.code))
             }
         }
     }

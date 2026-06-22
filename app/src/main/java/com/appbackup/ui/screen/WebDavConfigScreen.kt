@@ -10,9 +10,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import com.appbackup.R
 import com.appbackup.viewmodel.ConnectionState
 import com.appbackup.viewmodel.WebDavViewModel
 
@@ -52,7 +54,7 @@ fun WebDavConfigScreen(
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
             topBar = {
-                TopAppBar(title = { Text("WebDAV 配置") })
+                TopAppBar(title = { Text(stringResource(R.string.webdav_config)) })
             }
         ) { padding ->
             Column(
@@ -66,8 +68,8 @@ fun WebDavConfigScreen(
                 OutlinedTextField(
                     value = url,
                     onValueChange = { url = it },
-                    label = { Text("服务器地址") },
-                    placeholder = { Text("https://dav.example.com") },
+                    label = { Text(stringResource(R.string.server_url)) },
+                    placeholder = { Text(stringResource(R.string.server_url_placeholder)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri)
@@ -76,7 +78,7 @@ fun WebDavConfigScreen(
                 OutlinedTextField(
                     value = username,
                     onValueChange = { username = it },
-                    label = { Text("用户名") },
+                    label = { Text(stringResource(R.string.username)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -84,7 +86,7 @@ fun WebDavConfigScreen(
                 OutlinedTextField(
                     value = password,
                     onValueChange = { password = it },
-                    label = { Text("密码") },
+                    label = { Text(stringResource(R.string.password)) },
                     singleLine = true,
                     visualTransformation = PasswordVisualTransformation(),
                     modifier = Modifier.fillMaxWidth()
@@ -102,7 +104,7 @@ fun WebDavConfigScreen(
                         )
                         Spacer(Modifier.width(8.dp))
                     }
-                    Text("测试连接")
+                    Text(stringResource(R.string.test_connection))
                 }
                 Spacer(Modifier.height(12.dp))
                 FilledTonalButton(
@@ -113,7 +115,7 @@ fun WebDavConfigScreen(
                     modifier = Modifier.fillMaxWidth(),
                     enabled = url.isNotBlank() && username.isNotBlank() && password.isNotBlank()
                 ) {
-                    Text("保存并开始")
+                    Text(stringResource(R.string.save_and_start))
                     Spacer(Modifier.width(8.dp))
                     Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null)
                 }

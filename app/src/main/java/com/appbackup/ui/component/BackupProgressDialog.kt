@@ -5,7 +5,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.appbackup.R
 
 @Composable
 fun BackupProgressDialog(
@@ -15,7 +17,7 @@ fun BackupProgressDialog(
 ) {
     AlertDialog(
         onDismissRequest = {},
-        title = { Text("正在备份...") },
+        title = { Text(stringResource(R.string.backing_up)) },
         text = {
             Column(
                 modifier = Modifier.fillMaxWidth(),
@@ -31,7 +33,7 @@ fun BackupProgressDialog(
         },
         confirmButton = {
             TextButton(onClick = onCancel) {
-                Text("取消")
+                Text(stringResource(R.string.cancel))
             }
         }
     )
