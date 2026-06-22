@@ -19,6 +19,8 @@ import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import java.security.DigestInputStream
 import java.security.MessageDigest
+import java.text.SimpleDateFormat
+import java.util.*
 import java.util.concurrent.TimeUnit
 import javax.net.ssl.SSLHandshakeException
 
@@ -72,21 +74,25 @@ class WebDavRepository {
     suspend fun backupApps(
         apps: List<AppInfo>,
         config: PreferencesManager.WebDavConfig,
+        includeApk: Boolean = true,
         onProgress: (String, Float) -> Unit = { _, _ -> }
     ): Result<Map<AppInfo, String>> = withContext(Dispatchers.IO) {
         val results = mutableMapOf<AppInfo, String>()
         val baseUrl = normalizeUrl(config.url)
         val credential = Credentials.basic(config.username, config.password)
-        val appDir = "$baseUrl/APP备份"
 
-        ensureDirectory(appDir, credential)
+        val datePart = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        val uniqueId = UUID.randomUUID().toString().replace("-", "").take(6)
+        val sessionDir = "$baseUrl/APP备份/${datePart}_$uniqueId"
+
+        ensureDirectory(sessionDir, credential)
 
         for ((index, app) in apps.withIndex()) {
             if (!isActive) break
             val progress = (index.toFloat() + 1) / apps.size
             onProgress(app.name, progress)
             val result = try {
-                backupSingleApp(app, appDir, credential)
+                backupSingleApp(app, sessionDir, credential, includeApk)
                 Result.success(app.name)
             } catch (e: Exception) {
                 val errMsg = when (e) {
@@ -112,33 +118,37 @@ class WebDavRepository {
 
     private fun backupSingleApp(
         app: AppInfo,
-        appDir: String,
-        credential: String
+        sessionDir: String,
+        credential: String,
+        includeApk: Boolean
     ) {
         val sanitizedName = app.name.replace(Regex("[/\\\\:*?\"<>|]"), "_")
-        val dirUrl = "$appDir/$sanitizedName"
+        val dirUrl = "$sessionDir/$sanitizedName"
         ensureDirectory(dirUrl, credential)
 
-        val apkFile = File(app.apkPath)
-        val apkMd5 = MessageDigest.getInstance("MD5").let { md ->
-            FileInputStream(apkFile).use { fis ->
-                DigestInputStream(fis, md).use { dis ->
-                    val buf = ByteArray(8192)
-                    while (dis.read(buf) != -1) { }
+        var apkMd5 = ""
+        if (includeApk) {
+            val apkFile = File(app.apkPath)
+            apkMd5 = MessageDigest.getInstance("MD5").let { md ->
+                FileInputStream(apkFile).use { fis ->
+                    DigestInputStream(fis, md).use { dis ->
+                        val buf = ByteArray(8192)
+                        while (dis.read(buf) != -1) { }
+                    }
                 }
+                md.digest().joinToString("") { "%02x".format(it) }
             }
-            md.digest().joinToString("") { "%02x".format(it) }
+            putFile("$dirUrl/$sanitizedName.apk", apkFile, credential)
         }
-
-        putFile("$dirUrl/$sanitizedName.apk", apkFile, credential)
 
         val jsonObj = JSONObject().apply {
             put("name", app.name)
             put("packageName", app.packageName)
             put("versionName", app.versionName)
             put("versionCode", app.versionCode)
-            put("backupTime", java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US).format(java.util.Date()))
+            put("backupTime", SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date()))
             put("apkMd5", apkMd5)
+            put("hasApk", includeApk)
         }
         putFile("$dirUrl/$sanitizedName.json", jsonObj.toString(2).toByteArray(), credential)
     }

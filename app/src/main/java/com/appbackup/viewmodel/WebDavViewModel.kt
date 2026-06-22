@@ -44,6 +44,10 @@ class WebDavViewModel(application: Application) : AndroidViewModel(application) 
         _savedConfig.value = PreferencesManager.WebDavConfig(url, username, password)
     }
 
+    fun resetConnectionState() {
+        _connectionState.value = ConnectionState.Idle
+    }
+
     fun clearConfig() {
         prefsManager.clearWebDavConfig()
         _savedConfig.value = null

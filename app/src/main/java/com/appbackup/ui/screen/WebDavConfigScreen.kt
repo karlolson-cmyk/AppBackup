@@ -31,6 +31,10 @@ fun WebDavConfigScreen(
 
     val snackbarHostState = remember { SnackbarHostState() }
 
+    LaunchedEffect(Unit) {
+        viewModel.resetConnectionState()
+    }
+
     LaunchedEffect(connectionState) {
         when (val state = connectionState) {
             is ConnectionState.Success -> {

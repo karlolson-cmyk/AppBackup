@@ -58,6 +58,14 @@ class AppListViewModel(application: Application) : AndroidViewModel(application)
     fun getSelectedApps(): List<AppInfo> = _appList.value.filter { it.isSelected }
 
     fun backupSelected() {
+        backupSelectedWithApk(true)
+    }
+
+    fun backupSelectedNoApk() {
+        backupSelectedWithApk(false)
+    }
+
+    private fun backupSelectedWithApk(includeApk: Boolean) {
         val config = webDavConfig ?: run {
             _backupState.value = BackupState.Error("请先配置 WebDAV")
             return
@@ -70,7 +78,7 @@ class AppListViewModel(application: Application) : AndroidViewModel(application)
 
         backupJob = viewModelScope.launch {
             _backupState.value = BackupState.InProgress("准备中...", 0f)
-            val result = webDavRepository.backupApps(selected, config) { appName, progress ->
+            val result = webDavRepository.backupApps(selected, config, includeApk) { appName, progress ->
                 _backupState.value = BackupState.InProgress(appName, progress)
             }
             _backupState.value = result.fold(
