@@ -28,7 +28,9 @@ APK 输出：`app/build/outputs/apk/debug/app-debug.apk`
 
 ## 许可证
 
-MIT
+- **WebDAV 备份/恢复模块** — MIT
+- **APK 安装模块** (`com.appkitz.installer`) — GPL-3.0-or-later，
+  移植自 [AppManager](https://github.com/muntashirakon/AppManager) (GPL-3.0)
 
 ---
 
@@ -64,4 +66,6 @@ APK output: `app/build/outputs/apk/debug/app-debug.apk`
 
 ## License
 
-MIT
+- **WebDAV Backup/Restore module** — MIT
+- **APK Installer module** (`com.appkitz.installer`) — GPL-3.0-or-later,
+  ported from [AppManager](https://github.com/muntashirakon/AppManager) (GPL-3.0)

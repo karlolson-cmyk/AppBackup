@@ -12,8 +12,8 @@ android {
         applicationId = "com.appkitz"
         minSdk = 30
         targetSdk = 36
-        versionCode = 21
-        versionName = "2.7.0"
+        versionCode = 22
+        versionName = "2.8.0"
     }
 
     signingConfigs {
@@ -57,6 +57,7 @@ dependencies {
     implementation(libs.compose.ui)
     implementation(libs.compose.ui.tooling.preview)
     implementation(libs.okhttp)
+    implementation(libs.arsclib)
     debugImplementation(libs.compose.ui.tooling)
 
     testImplementation("junit:junit:4.13.2")

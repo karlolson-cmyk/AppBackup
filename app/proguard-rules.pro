@@ -2,3 +2,5 @@
 -dontwarn okhttp3.**
 -dontwarn okio.**
 -dontwarn com.google.errorprone.annotations.**
+-keep class com.reandroid.** { *; }
+-dontwarn com.reandroid.**
